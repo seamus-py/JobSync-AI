@@ -36,6 +36,23 @@ function AddJob(){
             }
     }
 
+    async function handleAddJob() {
+        try {
+            await axios.post(
+                'http://localhost:5001/api/saveJob',
+                { company, jobTitle },
+                {
+                    headers: {
+                        Authorization: `Bearer ${localStorage.getItem('token')}`
+                    }
+                }
+            );
+            alert('Account created!');
+        } catch (err) {
+            alert(err.response?.data?.msg || err.message);
+        }
+    }
+
     return(
         <>
             <div className='flex flex-row p-4 space-x-4'>
@@ -43,6 +60,8 @@ function AddJob(){
                     <h1 className="text-2xl font-bold p-4">Company</h1>
                     <input
                         type="text"
+                        value={company}
+                        onChange={(e) => setCompany(e.target.value)}
                         className="ml-4 p-2 border rounded-lg"
                         placeholder="Enter text..."
                     />
@@ -51,6 +70,8 @@ function AddJob(){
                     <h1 className="text-2xl font-bold p-4">Job Title</h1>
                     <input
                         type="text"
+                        value={jobTitle}
+                        onChange={(e) => setJobTitle(e.target.value)}
                         className="ml-4 p-2 border rounded-lg"
                         placeholder="Enter text..."
                     />
@@ -93,6 +114,13 @@ function AddJob(){
                     <h1 className="text-2xl font-bold p-4">Missing Keywords: {keywords}</h1>
                 </div>
             </div>
+
+            <button 
+                className="bg-blue-500 text-white p-2 rounded-lg shadow-md hover:bg-blue-600 m-4"
+                onClick = {handleAddJob}
+                >
+                    Add Job
+            </button>
             
         </>
     )

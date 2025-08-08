@@ -14,6 +14,7 @@ function SignIn(){
             if (response.data.msg == 'Login successful') {
                 alert('Sign In Successful!');
                 window.location.href = '/tracker';
+                localStorage.setItem('token', response.data.token);
             }
         } catch (err) {
             alert(err.response.data.msg);

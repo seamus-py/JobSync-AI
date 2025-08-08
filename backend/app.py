@@ -7,7 +7,11 @@ from models import db, User
 from flask_bcrypt import Bcrypt
 import jwt
 import datetime
-from models import db, User
+from models import db, User, Job
+from functools import wraps
+
+
+
 
 load_dotenv()
 
@@ -31,6 +35,30 @@ with app.app_context():
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 import re
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+
+        # JWT is expected in the Authorization header
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
+
+        if not token:
+            return jsonify({'msg': 'Token is missing!'}), 401
+
+        try:
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            current_user = User.query.get(data['user_id'])
+        except Exception as e:
+            return jsonify({'msg': 'Token is invalid!', 'error': str(e)}), 403
+
+        return f(current_user, *args, **kwargs)
+    return decorated
+
 
 @app.route('/api/getScore', methods=['POST'])
 def get_score():
@@ -128,13 +156,74 @@ def sign_in():
     }
 
     if user and bcrypt.check_password_hash(user.password, password):
+        token = jwt.encode(
+            {
+                'user_id': user.id,
+                'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=2)
+            },
+            app.config['SECRET_KEY'],
+            algorithm='HS256'
+        )
+
         response = {
             'msg': 'Login successful',
+            'token': token,
             'status': 200
         }
 
     return jsonify(response), response['status']
 
+
+@app.route('/api/saveJob', methods=['POST'])
+@token_required
+def save_job(current_user):
+    data = request.get_json()
+    email = current_user.email
+    company = data.get('company')
+    title = data.get('jobTitle')
+
+    new_job = Job(
+        email=email,
+        company=company,
+        title=title,
+        status='In Process'  # Default status
+    )
+    db.session.add(new_job)
+    db.session.commit()
+
+    # You can now access `current_user.id` to save the application
+    return jsonify({'msg': f'Application saved for user {current_user.email}'}), 200
+
+
+@app.route('/api/getJobs', methods=['GET'])
+@token_required
+def get_jobs(current_user):
+    try:
+        # Query jobs for the current user's email
+        user_jobs = Job.query.filter_by(email=current_user.email).all()
+        
+        # Convert jobs to dictionary format
+        jobs_list = []
+        for job in user_jobs:
+            jobs_list.append({
+                'id': job.id,
+                'title': job.title,
+                'company': job.company,
+                'status': job.status,
+                'email': job.email
+            })
+        
+        return jsonify({
+            'success': True,
+            'jobs': jobs_list,
+            'count': len(jobs_list)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
     
 
 if __name__ == '__main__':
