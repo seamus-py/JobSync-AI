@@ -9,6 +9,8 @@ import jwt
 import datetime
 from models import db, User, Job
 from functools import wraps
+import docx2txt
+import pdfplumber
 
 
 
@@ -62,9 +64,21 @@ def token_required(f):
 
 @app.route('/api/getScore', methods=['POST'])
 def get_score():
-    data = request.get_json()
-    resume = data.get('resume', '')
-    job_description = data.get('jobDescription', '')
+    job_description = request.form.get("jobDescription", "")
+
+    file = request.files.get("resume")
+    resume = ""
+
+    if file:
+        if file.filename.endswith(".txt"):
+            resume = file.read().decode("utf-8")
+        elif file.filename.endswith(".pdf"):
+            with pdfplumber.open(file) as pdf:
+                resume = "\n".join([page.extract_text() or "" for page in pdf.pages])
+        elif file.filename.endswith(".docx"):
+            resume = docx2txt.process(file)
+        else:
+            return {"error": "Unsupported file type"}, 400
 
     prompt = f"""
     You are an AI assistant that helps job applicants improve their resumes.
