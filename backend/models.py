@@ -13,3 +13,7 @@ class Job(db.Model):
     company = db.Column(db.String(200), nullable=False)
     title = db.Column(db.String(200), nullable=False)
     status = db.Column(db.String(200), nullable=False)
+    resume_file_path = db.Column(db.String(255)) 
+    job_description_file_path = db.Column(db.String(255)) 
+    score = db.Column(db.Float)
+    missing_keywords = db.Column(db.Text)

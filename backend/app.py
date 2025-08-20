@@ -11,6 +11,7 @@ from models import db, User, Job
 from functools import wraps
 import docx2txt
 import pdfplumber
+from werkzeug.utils import secure_filename
 
 
 
@@ -26,6 +27,10 @@ CORS(app)  # Allow cross-origin requests from frontend
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
+
+UPLOAD_FOLDER = "uploads/resumes"  # create this folder
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 db.init_app(app)
 bcrypt = Bcrypt(app)
@@ -81,20 +86,41 @@ def get_score():
             return {"error": "Unsupported file type"}, 400
 
     prompt = f"""
-    You are an AI assistant that helps job applicants improve their resumes.
-    Evaluate the following resume against the job description and return a score out of 100 based on how well keywords and skills from the job description match the resume and the missing keywords that should be added.
+        You are an AI assistant that evaluates resumes against job descriptions.
 
-    Return it in this exact format: 
-    "Score: X ///
-    Missing Keywords: list of missing keywords"
-    , where X is the score.
+        Your task:
+        1. Extract the **keywords, skills, and qualifications** from the job description.
+        2. Compare them against the **resume**, identifying which are present and which are missing.
+        3. Score the resume **from 0 to 100** based on alignment:
 
-    Resume:
-    {resume}
+        Scoring Rubric:
+        - 0–30: Very poor match (resume lacks most required keywords/skills)
+        - 31–50: Weak match (some overlap, but many critical skills missing)
+        - 51–70: Moderate match (resume covers a fair amount of relevant skills, but important gaps remain)
+        - 71–85: Strong match (resume contains most skills/keywords, only a few gaps)
+        - 86–95: Very strong match (resume is well-aligned with only minor improvements needed)
+        - 96–100: Excellent match (resume nearly perfectly matches the job description)
 
-    Job Description:
-    {job_description}
-    """
+        Rules for Scoring:
+        - The score must reflect the **percentage of matched keywords/skills**.
+        - Use decimals (e.g., 74.3) — never round to the nearest 5 or 10.
+        - Exact keyword matches should count more heavily than loosely related ones.
+        - Prioritize critical/required skills from the job description over optional ones.
+
+        4. Return a list of **missing keywords** that, if added, would improve alignment.
+        - Keep the list concise and only include relevant, high-impact terms.
+
+        Return the result in this exact format (nothing else):
+
+        Score: <numeric_score between 0 and 100 with 1 decimal place> ///
+        Missing Keywords: <comma-separated list of missing keywords>
+
+        Resume:
+        {resume}
+
+        Job Description:
+        {job_description}
+        """
 
     try:
         response = client.chat.completions.create(
@@ -191,21 +217,34 @@ def sign_in():
 @app.route('/api/saveJob', methods=['POST'])
 @token_required
 def save_job(current_user):
-    data = request.get_json()
     email = current_user.email
-    company = data.get('company')
-    title = data.get('jobTitle')
+    company = request.form.get('company')
+    title = request.form.get('jobTitle')
+    job_description = request.form.get('jobDescription')
+    score = float(request.form.get('score', 0))
+    missing_keywords = request.form.get('missingKeywords', '')
+
+    resume_file = request.files.get('resume')
+    resume_path = None
+    if resume_file:
+        upload_folder = "uploads/resumes"
+        os.makedirs(upload_folder, exist_ok=True)
+        resume_path = os.path.join(upload_folder, resume_file.filename)
+        resume_file.save(resume_path)
 
     new_job = Job(
         email=email,
         company=company,
         title=title,
-        status='In Process'  # Default status
+        status='In Process',
+        resume_file_path=resume_path,
+        job_description_file_path=job_description,  # or save text in a different column
+        score=score,
+        missing_keywords=missing_keywords
     )
     db.session.add(new_job)
     db.session.commit()
 
-    # You can now access `current_user.id` to save the application
     return jsonify({'msg': f'Application saved for user {current_user.email}'}), 200
 
 

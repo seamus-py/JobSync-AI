@@ -28,11 +28,20 @@ function AddJob(){
 
     async function handleAddJob() {
         try {
+            const formData = new FormData();
+            formData.append("company", company);
+            formData.append("jobTitle", jobTitle);
+            formData.append("resume", resumeFile); // file
+            formData.append("jobDescription", jobDescription); // as text
+            formData.append("score", score); // number
+            formData.append("missingKeywords", keywords); // string or JSON.stringify if list
+
             await axios.post(
                 'http://localhost:5001/api/saveJob',
-                { company, jobTitle },
+                formData,
                 {
                     headers: {
+                        "Content-Type": "multipart/form-data",
                         Authorization: `Bearer ${localStorage.getItem('token')}`
                     }
                 }
